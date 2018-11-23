@@ -38,6 +38,7 @@ public final class ClusterConstants {
     public static final int PARAM_TYPE_STRING = 7;
 
     public static final int DEFAULT_CLUSTER_SERVER_PORT = 8730;
+    public static final int DEFAULT_REQUEST_TIMEOUT = 20;
 
     private ClusterConstants() {}
 }
