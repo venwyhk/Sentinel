@@ -15,22 +15,23 @@
  */
 package com.alibaba.csp.sentinel;
 
-import com.alibaba.csp.sentinel.config.SentinelConfig;
 import com.alibaba.csp.sentinel.node.ClusterNode;
 import com.alibaba.csp.sentinel.node.DefaultNode;
 import com.alibaba.csp.sentinel.node.EntranceNode;
 import com.alibaba.csp.sentinel.slotchain.StringResourceWrapper;
-import com.alibaba.csp.sentinel.slots.system.SystemRule;
 import com.alibaba.csp.sentinel.util.VersionUtil;
 
 /**
+ * Universal constants of Sentinel.
+ *
  * @author qinan.qn
  * @author youji.zj
  * @author jialiang.linjl
+ * @author Eric Zhao
  */
 public final class Constants {
 
-    public static final String SENTINEL_VERSION = VersionUtil.getVersion("1.5.0");
+    public static final String SENTINEL_VERSION = VersionUtil.getVersion("1.7.1");
 
     public final static int MAX_CONTEXT_NAME_SIZE = 2000;
     public final static int MAX_SLOT_CHAIN_SIZE = 6000;
@@ -38,24 +39,36 @@ public final class Constants {
     public final static String ROOT_ID = "machine-root";
     public final static String CONTEXT_DEFAULT_NAME = "sentinel_default_context";
 
+    /**
+     * A virtual resource identifier for total inbound statistics (since 1.5.0).
+     */
+    public final static String TOTAL_IN_RESOURCE_NAME = "__total_inbound_traffic__";
+
+    /**
+     * A virtual resource identifier for cpu usage statistics (since 1.6.1).
+     */
+    public final static String CPU_USAGE_RESOURCE_NAME = "__cpu_usage__";
+
+    /**
+     * A virtual resource identifier for system load statistics (since 1.6.1).
+     */
+    public final static String SYSTEM_LOAD_RESOURCE_NAME = "__system_load__";
+
+    /**
+     * Global ROOT statistic node that represents the universal parent node.
+     */
     public final static DefaultNode ROOT = new EntranceNode(new StringResourceWrapper(ROOT_ID, EntryType.IN),
-        Env.nodeBuilder.buildClusterNode());
+        new ClusterNode(ROOT_ID, ResourceTypeConstants.COMMON));
 
     /**
-     * Statistics for {@link SystemRule} checking.
+     * Global statistic node for inbound traffic. Usually used for {@code SystemRule} checking.
      */
-    public final static ClusterNode ENTRY_NODE = new ClusterNode();
-
-    /**
-     * Response time that exceeds TIME_DROP_VALVE will be calculated as TIME_DROP_VALVE.
-     * Default value is 4900 ms
-     * It can be configured by property file or JVM parameter -Dcsp.sentinel.statistic.max.rt=xxx
-     * See {@link SentinelConfig#statisticMaxRt()}
-     */
-    public static int TIME_DROP_VALVE = SentinelConfig.statisticMaxRt();
+    public final static ClusterNode ENTRY_NODE = new ClusterNode(TOTAL_IN_RESOURCE_NAME, ResourceTypeConstants.COMMON);
 
     /**
      * The global switch for Sentinel.
      */
     public static volatile boolean ON = true;
+
+    private Constants() {}
 }

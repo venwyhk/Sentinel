@@ -18,14 +18,17 @@ package com.alibaba.csp.sentinel.dashboard.controller;
 import java.util.Date;
 import java.util.List;
 
+import com.alibaba.csp.sentinel.dashboard.auth.AuthAction;
 import com.alibaba.csp.sentinel.dashboard.client.SentinelApiClient;
 import com.alibaba.csp.sentinel.dashboard.discovery.MachineInfo;
+import com.alibaba.csp.sentinel.dashboard.auth.AuthService.PrivilegeType;
 import com.alibaba.csp.sentinel.slots.block.RuleConstant;
 import com.alibaba.csp.sentinel.util.StringUtil;
 
 import com.alibaba.csp.sentinel.dashboard.datasource.entity.rule.DegradeRuleEntity;
 import com.alibaba.csp.sentinel.dashboard.domain.Result;
 import com.alibaba.csp.sentinel.dashboard.repository.rule.InMemDegradeRuleStore;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,7 +53,9 @@ public class DegradeController {
 
     @ResponseBody
     @RequestMapping("/rules.json")
+    @AuthAction(PrivilegeType.READ_RULE)
     public Result<List<DegradeRuleEntity>> queryMachineRules(String app, String ip, Integer port) {
+
         if (StringUtil.isEmpty(app)) {
             return Result.ofFail(-1, "app can't be null or empty");
         }
@@ -72,8 +77,9 @@ public class DegradeController {
 
     @ResponseBody
     @RequestMapping("/new.json")
+    @AuthAction(PrivilegeType.WRITE_RULE)
     public Result<DegradeRuleEntity> add(String app, String ip, Integer port, String limitApp, String resource,
-                  Double count, Integer timeWindow, Integer grade) {
+                                         Double count, Integer timeWindow, Integer grade) {
         if (StringUtil.isBlank(app)) {
             return Result.ofFail(-1, "app can't be null or empty");
         }
@@ -127,8 +133,9 @@ public class DegradeController {
 
     @ResponseBody
     @RequestMapping("/save.json")
+    @AuthAction(PrivilegeType.WRITE_RULE)
     public Result<DegradeRuleEntity> updateIfNotNull(Long id, String app, String limitApp, String resource,
-                              Double count, Integer timeWindow, Integer grade) {
+                                                     Double count, Integer timeWindow, Integer grade) {
         if (id == null) {
             return Result.ofFail(-1, "id can't be null");
         }
@@ -141,6 +148,7 @@ public class DegradeController {
         if (entity == null) {
             return Result.ofFail(-1, "id " + id + " dose not exist");
         }
+
         if (StringUtil.isNotBlank(app)) {
             entity.setApp(app.trim());
         }
@@ -176,6 +184,7 @@ public class DegradeController {
 
     @ResponseBody
     @RequestMapping("/delete.json")
+    @AuthAction(PrivilegeType.DELETE_RULE)
     public Result<Long> delete(Long id) {
         if (id == null) {
             return Result.ofFail(-1, "id can't be null");
@@ -185,6 +194,7 @@ public class DegradeController {
         if (oldEntity == null) {
             return Result.ofSuccess(null);
         }
+
         try {
             repository.delete(id);
         } catch (Throwable throwable) {

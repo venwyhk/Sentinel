@@ -18,6 +18,9 @@ package com.alibaba.csp.sentinel.dashboard.controller.v2;
 import java.util.Date;
 import java.util.List;
 
+import com.alibaba.csp.sentinel.dashboard.auth.AuthAction;
+import com.alibaba.csp.sentinel.dashboard.auth.AuthService;
+import com.alibaba.csp.sentinel.dashboard.auth.AuthService.PrivilegeType;
 import com.alibaba.csp.sentinel.util.StringUtil;
 
 import com.alibaba.csp.sentinel.dashboard.datasource.entity.rule.FlowRuleEntity;
@@ -25,6 +28,7 @@ import com.alibaba.csp.sentinel.dashboard.repository.rule.InMemoryRuleRepository
 import com.alibaba.csp.sentinel.dashboard.rule.DynamicRuleProvider;
 import com.alibaba.csp.sentinel.dashboard.rule.DynamicRulePublisher;
 import com.alibaba.csp.sentinel.dashboard.domain.Result;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,7 +66,9 @@ public class FlowControllerV2 {
     private DynamicRulePublisher<List<FlowRuleEntity>> rulePublisher;
 
     @GetMapping("/rules")
+    @AuthAction(PrivilegeType.READ_RULE)
     public Result<List<FlowRuleEntity>> apiQueryMachineRules(@RequestParam String app) {
+
         if (StringUtil.isEmpty(app)) {
             return Result.ofFail(-1, "app can't be null or empty");
         }
@@ -129,7 +135,9 @@ public class FlowControllerV2 {
     }
 
     @PostMapping("/rule")
+    @AuthAction(value = AuthService.PrivilegeType.WRITE_RULE)
     public Result<FlowRuleEntity> apiAddFlowRule(@RequestBody FlowRuleEntity entity) {
+
         Result<FlowRuleEntity> checkResult = checkEntityInternal(entity);
         if (checkResult != null) {
             return checkResult;
@@ -151,7 +159,10 @@ public class FlowControllerV2 {
     }
 
     @PutMapping("/rule/{id}")
-    public Result<FlowRuleEntity> apiUpdateFlowRule(@PathVariable("id") Long id, @RequestBody FlowRuleEntity entity) {
+    @AuthAction(AuthService.PrivilegeType.WRITE_RULE)
+
+    public Result<FlowRuleEntity> apiUpdateFlowRule(@PathVariable("id") Long id,
+                                                    @RequestBody FlowRuleEntity entity) {
         if (id == null || id <= 0) {
             return Result.ofFail(-1, "Invalid id");
         }
@@ -162,6 +173,7 @@ public class FlowControllerV2 {
         if (entity == null) {
             return Result.ofFail(-1, "invalid body");
         }
+
         entity.setApp(oldEntity.getApp());
         entity.setIp(oldEntity.getIp());
         entity.setPort(oldEntity.getPort());
@@ -188,6 +200,7 @@ public class FlowControllerV2 {
     }
 
     @DeleteMapping("/rule/{id}")
+    @AuthAction(PrivilegeType.DELETE_RULE)
     public Result<Long> apiDeleteRule(@PathVariable("id") Long id) {
         if (id == null || id <= 0) {
             return Result.ofFail(-1, "Invalid id");
@@ -196,6 +209,7 @@ public class FlowControllerV2 {
         if (oldEntity == null) {
             return Result.ofSuccess(null);
         }
+
         try {
             repository.delete(id);
             publishRules(oldEntity.getApp());

@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,7 +41,7 @@ public class ClusterNodeTest {
 
     @Test
     public void testGetOrCreateOriginNodeSingleThread() {
-        ClusterNode clusterNode = new ClusterNode();
+        ClusterNode clusterNode = new ClusterNode("test");
 
         String origin1 = "origin1";
         Node originNode1 = clusterNode.getOrCreateOriginNode(origin1);
@@ -75,13 +74,11 @@ public class ClusterNodeTest {
         final int testTimes = 10;
 
         for (int times = 0; times < testTimes; times++) {
-            final ClusterNode clusterNode = new ClusterNode();
+            final ClusterNode clusterNode = new ClusterNode("test");
 
             // Store all distinct nodes by calling ClusterNode#getOrCreateOriginNode.
             // Here we need a thread-safe concurrent set (created from ConcurrentHashMap).
             final Set<Node> createdNodes = Collections.newSetFromMap(new ConcurrentHashMap<Node, Boolean>());
-
-            final Random random = new Random();
 
             // 10 threads, 3 origins, 20 tasks (calling 20 times of ClusterNode#getOrCreateOriginNode concurrently)
             final ExecutorService es = Executors.newFixedThreadPool(10);
@@ -91,11 +88,12 @@ public class ClusterNodeTest {
 
             List<Callable<Object>> tasks = new ArrayList<Callable<Object>>(taskCount);
             for (int i = 0; i < taskCount; i++) {
+                final int index = i % origins.size();
                 tasks.add(new Callable<Object>() {
                     @Override
                     public Object call() throws Exception {
                         // one task call one times of ClusterNode#getOrCreateOriginNode
-                        Node node = clusterNode.getOrCreateOriginNode(origins.get(random.nextInt(origins.size())));
+                        Node node = clusterNode.getOrCreateOriginNode(origins.get(index));
                         // add the result node to the createdNodes set
                         createdNodes.add(node);
                         latch.countDown();
@@ -132,25 +130,25 @@ public class ClusterNodeTest {
 
     @Test
     public void testTraceException() {
-        ClusterNode clusterNode = new ClusterNode();
+        ClusterNode clusterNode = new ClusterNode("test");
 
         Exception exception = new RuntimeException("test");
 
         // test count<=0, no exceptionQps added
         clusterNode.trace(exception, 0);
         clusterNode.trace(exception, -1);
-        assertEquals(0, clusterNode.exceptionQps());
+        assertEquals(0, clusterNode.exceptionQps(), 0.01);
         assertEquals(0, clusterNode.totalException());
 
         // test count=1, not BlockException, 1 exceptionQps added
         clusterNode.trace(exception, 1);
-        assertEquals(1, clusterNode.exceptionQps());
+        assertEquals(1, clusterNode.exceptionQps(), 0.01);
         assertEquals(1, clusterNode.totalException());
 
         // test count=1, BlockException, no exceptionQps added
         FlowException flowException = new FlowException("flow");
         clusterNode.trace(flowException, 1);
-        assertEquals(1, clusterNode.exceptionQps());
+        assertEquals(1, clusterNode.exceptionQps(), 0.01);
         assertEquals(1, clusterNode.totalException());
     }
 }

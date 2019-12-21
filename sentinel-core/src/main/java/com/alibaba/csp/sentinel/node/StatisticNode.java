@@ -15,15 +15,16 @@
  */
 package com.alibaba.csp.sentinel.node;
 
+import com.alibaba.csp.sentinel.node.metric.MetricNode;
+import com.alibaba.csp.sentinel.slots.statistic.base.LongAdder;
+import com.alibaba.csp.sentinel.slots.statistic.metric.ArrayMetric;
+import com.alibaba.csp.sentinel.slots.statistic.metric.Metric;
+import com.alibaba.csp.sentinel.util.TimeUtil;
+import com.alibaba.csp.sentinel.util.function.Predicate;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import com.alibaba.csp.sentinel.util.TimeUtil;
-import com.alibaba.csp.sentinel.node.metric.MetricNode;
-import com.alibaba.csp.sentinel.slots.statistic.metric.ArrayMetric;
-import com.alibaba.csp.sentinel.slots.statistic.metric.Metric;
 
 /**
  * <p>The statistic node keep three kinds of real-time statistics metrics:</p>
@@ -99,12 +100,12 @@ public class StatisticNode implements Node {
      * Holds statistics of the recent 60 seconds. The windowLengthInMs is deliberately set to 1000 milliseconds,
      * meaning each bucket per second, in this way we can get accurate statistics of each second.
      */
-    private transient Metric rollingCounterInMinute = new ArrayMetric(60, 60 * 1000);
+    private transient Metric rollingCounterInMinute = new ArrayMetric(60, 60 * 1000, false);
 
     /**
      * The counter for thread count.
      */
-    private AtomicInteger curThreadNum = new AtomicInteger(0);
+    private LongAdder curThreadNum = new LongAdder();
 
     /**
      * The last timestamp when metrics were fetched.
@@ -116,7 +117,7 @@ public class StatisticNode implements Node {
         // The fetch operation is thread-safe under a single-thread scheduler pool.
         long currentTime = TimeUtil.currentTimeMillis();
         currentTime = currentTime - currentTime % 1000;
-        Map<Long, MetricNode> metrics = new ConcurrentHashMap<Long, MetricNode>();
+        Map<Long, MetricNode> metrics = new ConcurrentHashMap<>();
         List<MetricNode> nodesOfEverySecond = rollingCounterInMinute.details();
         long newLastFetchTime = lastFetchTime;
         // Iterate metrics of all resources, filter valid metrics (not-empty and up-to-date).
@@ -131,13 +132,18 @@ public class StatisticNode implements Node {
         return metrics;
     }
 
+    @Override
+    public List<MetricNode> rawMetricsInMin(Predicate<Long> timePredicate) {
+        return rollingCounterInMinute.detailsOnCondition(timePredicate);
+    }
+
     private boolean isNodeInTime(MetricNode node, long currentTime) {
         return node.getTimestamp() > lastFetchTime && node.getTimestamp() < currentTime;
     }
 
     private boolean isValidMetricNode(MetricNode node) {
         return node.getPassQps() > 0 || node.getBlockQps() > 0 || node.getSuccessQps() > 0
-            || node.getExceptionQps() > 0 || node.getRt() > 0;
+            || node.getExceptionQps() > 0 || node.getRt() > 0 || node.getOccupiedPassQps() > 0;
     }
 
     @Override
@@ -147,8 +153,7 @@ public class StatisticNode implements Node {
 
     @Override
     public long totalRequest() {
-        long totalRequest = rollingCounterInMinute.pass() + rollingCounterInMinute.block();
-        return totalRequest;
+        return rollingCounterInMinute.pass() + rollingCounterInMinute.block();
     }
 
     @Override
@@ -157,22 +162,22 @@ public class StatisticNode implements Node {
     }
 
     @Override
-    public long blockQps() {
-        return rollingCounterInSecond.block() / (long) rollingCounterInSecond.getWindowIntervalInSec();
+    public double blockQps() {
+        return rollingCounterInSecond.block() / rollingCounterInSecond.getWindowIntervalInSec();
     }
 
     @Override
-    public long previousBlockQps() {
+    public double previousBlockQps() {
         return this.rollingCounterInMinute.previousWindowBlock();
     }
 
     @Override
-    public long previousPassQps() {
+    public double previousPassQps() {
         return this.rollingCounterInMinute.previousWindowPass();
     }
 
     @Override
-    public long totalQps() {
+    public double totalQps() {
         return passQps() + blockQps();
     }
 
@@ -182,8 +187,8 @@ public class StatisticNode implements Node {
     }
 
     @Override
-    public long exceptionQps() {
-        return rollingCounterInSecond.exception() / (long) rollingCounterInSecond.getWindowIntervalInSec();
+    public double exceptionQps() {
+        return rollingCounterInSecond.exception() / rollingCounterInSecond.getWindowIntervalInSec();
     }
 
     @Override
@@ -192,38 +197,49 @@ public class StatisticNode implements Node {
     }
 
     @Override
-    public long passQps() {
-        return rollingCounterInSecond.pass() / (long) rollingCounterInSecond.getWindowIntervalInSec();
+    public double passQps() {
+        return rollingCounterInSecond.pass() / rollingCounterInSecond.getWindowIntervalInSec();
     }
 
     @Override
-    public long successQps() {
-        return rollingCounterInSecond.success() / (long) rollingCounterInSecond.getWindowIntervalInSec();
+    public long totalPass() {
+        return rollingCounterInMinute.pass();
     }
 
     @Override
-    public long maxSuccessQps() {
-        return rollingCounterInSecond.maxSuccess() * rollingCounterInSecond.getSampleCount();
+    public double successQps() {
+        return rollingCounterInSecond.success() / rollingCounterInSecond.getWindowIntervalInSec();
     }
 
     @Override
-    public long avgRt() {
+    public double maxSuccessQps() {
+        return (double) rollingCounterInSecond.maxSuccess() * rollingCounterInSecond.getSampleCount()
+                / rollingCounterInSecond.getWindowIntervalInSec();
+    }
+
+    @Override
+    public double occupiedPassQps() {
+        return rollingCounterInSecond.occupiedPass() / rollingCounterInSecond.getWindowIntervalInSec();
+    }
+
+    @Override
+    public double avgRt() {
         long successCount = rollingCounterInSecond.success();
         if (successCount == 0) {
             return 0;
         }
 
-        return rollingCounterInSecond.rt() / successCount;
+        return rollingCounterInSecond.rt() * 1.0 / successCount;
     }
 
     @Override
-    public long minRt() {
+    public double minRt() {
         return rollingCounterInSecond.minRt();
     }
 
     @Override
     public int curThreadNum() {
-        return curThreadNum.get();
+        return (int)curThreadNum.sum();
     }
 
     @Override
@@ -251,21 +267,71 @@ public class StatisticNode implements Node {
     public void increaseExceptionQps(int count) {
         rollingCounterInSecond.addException(count);
         rollingCounterInMinute.addException(count);
-
     }
 
     @Override
     public void increaseThreadNum() {
-        curThreadNum.incrementAndGet();
+        curThreadNum.increment();
     }
 
     @Override
     public void decreaseThreadNum() {
-        curThreadNum.decrementAndGet();
+        curThreadNum.decrement();
     }
 
     @Override
     public void debug() {
-        rollingCounterInSecond.debugQps();
+        rollingCounterInSecond.debug();
+    }
+
+    @Override
+    public long tryOccupyNext(long currentTime, int acquireCount, double threshold) {
+        double maxCount = threshold * IntervalProperty.INTERVAL / 1000;
+        long currentBorrow = rollingCounterInSecond.waiting();
+        if (currentBorrow >= maxCount) {
+            return OccupyTimeoutProperty.getOccupyTimeout();
+        }
+
+        int windowLength = IntervalProperty.INTERVAL / SampleCountProperty.SAMPLE_COUNT;
+        long earliestTime = currentTime - currentTime % windowLength + windowLength - IntervalProperty.INTERVAL;
+
+        int idx = 0;
+        /*
+         * Note: here {@code currentPass} may be less than it really is NOW, because time difference
+         * since call rollingCounterInSecond.pass(). So in high concurrency, the following code may
+         * lead more tokens be borrowed.
+         */
+        long currentPass = rollingCounterInSecond.pass();
+        while (earliestTime < currentTime) {
+            long waitInMs = idx * windowLength + windowLength - currentTime % windowLength;
+            if (waitInMs >= OccupyTimeoutProperty.getOccupyTimeout()) {
+                break;
+            }
+            long windowPass = rollingCounterInSecond.getWindowPass(earliestTime);
+            if (currentPass + currentBorrow + acquireCount - windowPass <= maxCount) {
+                return waitInMs;
+            }
+            earliestTime += windowLength;
+            currentPass -= windowPass;
+            idx++;
+        }
+
+        return OccupyTimeoutProperty.getOccupyTimeout();
+    }
+
+    @Override
+    public long waiting() {
+        return rollingCounterInSecond.waiting();
+    }
+
+    @Override
+    public void addWaitingRequest(long futureTime, int acquireCount) {
+        rollingCounterInSecond.addWaiting(futureTime, acquireCount);
+    }
+
+    @Override
+    public void addOccupiedPass(int acquireCount) {
+        rollingCounterInMinute.addOccupiedPass(acquireCount);
+        rollingCounterInMinute.addPass(acquireCount);
     }
 }

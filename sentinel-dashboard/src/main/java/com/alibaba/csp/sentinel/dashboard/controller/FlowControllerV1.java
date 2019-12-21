@@ -18,6 +18,8 @@ package com.alibaba.csp.sentinel.dashboard.controller;
 import java.util.Date;
 import java.util.List;
 
+import com.alibaba.csp.sentinel.dashboard.auth.AuthAction;
+import com.alibaba.csp.sentinel.dashboard.auth.AuthService.PrivilegeType;
 import com.alibaba.csp.sentinel.util.StringUtil;
 
 import com.alibaba.csp.sentinel.dashboard.client.SentinelApiClient;
@@ -25,6 +27,7 @@ import com.alibaba.csp.sentinel.dashboard.datasource.entity.rule.FlowRuleEntity;
 import com.alibaba.csp.sentinel.dashboard.discovery.MachineInfo;
 import com.alibaba.csp.sentinel.dashboard.domain.Result;
 import com.alibaba.csp.sentinel.dashboard.repository.rule.InMemoryRuleRepositoryAdapter;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,9 +59,11 @@ public class FlowControllerV1 {
     private SentinelApiClient sentinelApiClient;
 
     @GetMapping("/rules")
+    @AuthAction(PrivilegeType.READ_RULE)
     public Result<List<FlowRuleEntity>> apiQueryMachineRules(@RequestParam String app,
                                                              @RequestParam String ip,
                                                              @RequestParam Integer port) {
+
         if (StringUtil.isEmpty(app)) {
             return Result.ofFail(-1, "app can't be null or empty");
         }
@@ -126,6 +131,7 @@ public class FlowControllerV1 {
     }
 
     @PostMapping("/rule")
+    @AuthAction(PrivilegeType.WRITE_RULE)
     public Result<FlowRuleEntity> apiAddFlowRule(@RequestBody FlowRuleEntity entity) {
         Result<FlowRuleEntity> checkResult = checkEntityInternal(entity);
         if (checkResult != null) {
@@ -150,10 +156,12 @@ public class FlowControllerV1 {
     }
 
     @PutMapping("/save.json")
+    @AuthAction(PrivilegeType.WRITE_RULE)
     public Result<FlowRuleEntity> updateIfNotNull(Long id, String app,
-                              String limitApp, String resource, Integer grade,
-                              Double count, Integer strategy, String refResource,
-                              Integer controlBehavior, Integer warmUpPeriodSec, Integer maxQueueingTimeMs) {
+                                                  String limitApp, String resource, Integer grade,
+                                                  Double count, Integer strategy, String refResource,
+                                                  Integer controlBehavior, Integer warmUpPeriodSec,
+                                                  Integer maxQueueingTimeMs) {
         if (id == null) {
             return Result.ofFail(-1, "id can't be null");
         }
@@ -227,7 +235,9 @@ public class FlowControllerV1 {
     }
 
     @DeleteMapping("/delete.json")
+    @AuthAction(PrivilegeType.WRITE_RULE)
     public Result<Long> delete(Long id) {
+
         if (id == null) {
             return Result.ofFail(-1, "id can't be null");
         }
@@ -235,6 +245,7 @@ public class FlowControllerV1 {
         if (oldEntity == null) {
             return Result.ofSuccess(null);
         }
+
         try {
             repository.delete(id);
         } catch (Exception e) {

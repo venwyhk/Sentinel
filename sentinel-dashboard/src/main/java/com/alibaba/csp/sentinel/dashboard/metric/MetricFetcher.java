@@ -19,6 +19,7 @@ import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.Charset;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,16 +35,17 @@ import java.util.concurrent.ThreadPoolExecutor.DiscardPolicy;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.alibaba.csp.sentinel.Constants;
 import com.alibaba.csp.sentinel.concurrent.NamedThreadFactory;
 import com.alibaba.csp.sentinel.config.SentinelConfig;
 import com.alibaba.csp.sentinel.dashboard.datasource.entity.MetricEntity;
+import com.alibaba.csp.sentinel.dashboard.discovery.AppInfo;
 import com.alibaba.csp.sentinel.dashboard.discovery.AppManagement;
 import com.alibaba.csp.sentinel.dashboard.discovery.MachineInfo;
 import com.alibaba.csp.sentinel.node.metric.MetricNode;
 import com.alibaba.csp.sentinel.util.StringUtil;
 
 import com.alibaba.csp.sentinel.dashboard.repository.metric.MetricsRepository;
-import com.alibaba.csp.sentinel.dashboard.util.MachineUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.concurrent.FutureCallback;
@@ -84,6 +86,8 @@ public class MetricFetcher {
     private AppManagement appManagement;
 
     private CloseableHttpAsyncClient httpclient;
+
+    @SuppressWarnings("PMD.ThreadPoolCreationRule")
     private ScheduledExecutorService fetchScheduleService = Executors.newScheduledThreadPool(1,
         new NamedThreadFactory("sentinel-dashboard-metrics-fetch-task"));
     private ExecutorService fetchService;
@@ -168,14 +172,21 @@ public class MetricFetcher {
         if (maxWaitSeconds <= 0) {
             throw new IllegalArgumentException("maxWaitSeconds must > 0, but " + maxWaitSeconds);
         }
-        Set<MachineInfo> machines = appManagement.getDetailApp(app).getMachines();
+        AppInfo appInfo = appManagement.getDetailApp(app);
+        // auto remove for app
+        if (appInfo.isDead()) {
+            logger.info("Dead app removed: {}", app);
+            appManagement.removeApp(app);
+            return;
+        }
+        Set<MachineInfo> machines = appInfo.getMachines();
         logger.debug("enter fetchOnce(" + app + "), machines.size()=" + machines.size()
             + ", time intervalMs [" + startTime + ", " + endTime + "]");
         if (machines.isEmpty()) {
             return;
         }
         final String msg = "fetch";
-        AtomicLong dead = new AtomicLong();
+        AtomicLong unhealthy = new AtomicLong();
         final AtomicLong success = new AtomicLong();
         final AtomicLong fail = new AtomicLong();
 
@@ -184,10 +195,16 @@ public class MetricFetcher {
         final Map<String, MetricEntity> metricMap = new ConcurrentHashMap<>(16);
         final CountDownLatch latch = new CountDownLatch(machines.size());
         for (final MachineInfo machine : machines) {
-            // dead
-            if (System.currentTimeMillis() - machine.getTimestamp().getTime() > MachineUtils.getMaxClientTimeout()) {
+            // auto remove
+            if (machine.isDead()) {
                 latch.countDown();
-                dead.incrementAndGet();
+                appManagement.getDetailApp(app).removeMachine(machine.getIp(), machine.getPort());
+                logger.info("Dead machine removed: {}:{} of {}", machine.getIp(), machine.getPort(), app);
+                continue;
+            }
+            if (!machine.isHealthy()) {
+                latch.countDown();
+                unhealthy.incrementAndGet();
                 continue;
             }
             final String url = "http://" + machine.getIp() + ":" + machine.getPort() + "/" + METRIC_URL_PATH
@@ -307,7 +324,10 @@ public class MetricFetcher {
         for (String line : lines) {
             try {
                 MetricNode node = MetricNode.fromThinString(line);
-                /**
+                if (shouldFilterOut(node.getResource())) {
+                    continue;
+                }
+                /*
                  * aggregation metrics by app_resource_timeSecond, ignore ip and port.
                  */
                 String key = buildMetricKey(machine.getApp(), node.getResource(), node.getTimestamp());
@@ -339,6 +359,16 @@ public class MetricFetcher {
     private String buildMetricKey(String app, String resource, long timestamp) {
         return app + "__" + resource + "__" + (timestamp / 1000);
     }
+
+    private boolean shouldFilterOut(String resource) {
+        return RES_EXCLUSION_SET.contains(resource);
+    }
+
+    private static final Set<String> RES_EXCLUSION_SET = new HashSet<String>() {{
+       add(Constants.TOTAL_IN_RESOURCE_NAME);
+       add(Constants.SYSTEM_LOAD_RESOURCE_NAME);
+       add(Constants.CPU_USAGE_RESOURCE_NAME);
+    }};
 
 }
 

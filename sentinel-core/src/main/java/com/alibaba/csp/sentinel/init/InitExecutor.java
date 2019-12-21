@@ -21,6 +21,7 @@ import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.alibaba.csp.sentinel.log.RecordLog;
+import com.alibaba.csp.sentinel.spi.ServiceLoaderUtil;
 
 /**
  * Load registered init functions and execute in order.
@@ -42,7 +43,7 @@ public final class InitExecutor {
             return;
         }
         try {
-            ServiceLoader<InitFunc> loader = ServiceLoader.load(InitFunc.class);
+            ServiceLoader<InitFunc> loader = ServiceLoaderUtil.getServiceLoader(InitFunc.class);
             List<OrderWrapper> initList = new ArrayList<OrderWrapper>();
             for (InitFunc initFunc : loader) {
                 RecordLog.info("[InitExecutor] Found init func: " + initFunc.getClass().getCanonicalName());
@@ -50,16 +51,15 @@ public final class InitExecutor {
             }
             for (OrderWrapper w : initList) {
                 w.func.init();
-                RecordLog.info(String.format("[InitExecutor] Initialized: %s with order %d",
+                RecordLog.info(String.format("[InitExecutor] Executing %s with order %d",
                     w.func.getClass().getCanonicalName(), w.order));
             }
         } catch (Exception ex) {
-            RecordLog.warn("[InitExecutor] Init failed", ex);
+            RecordLog.warn("[InitExecutor] WARN: Initialization failed", ex);
             ex.printStackTrace();
         } catch (Error error) {
-            RecordLog.warn("[InitExecutor] Init failed with fatal error", error);
+            RecordLog.warn("[InitExecutor] ERROR: Initialization failed with fatal error", error);
             error.printStackTrace();
-            throw error;
         }
     }
 

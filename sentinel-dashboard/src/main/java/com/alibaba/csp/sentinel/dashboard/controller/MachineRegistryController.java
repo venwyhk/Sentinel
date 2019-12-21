@@ -15,8 +15,6 @@
  */
 package com.alibaba.csp.sentinel.dashboard.controller;
 
-import java.util.Date;
-
 import com.alibaba.csp.sentinel.dashboard.discovery.AppManagement;
 import com.alibaba.csp.sentinel.util.StringUtil;
 
@@ -29,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
@@ -42,7 +41,7 @@ public class MachineRegistryController {
 
     @ResponseBody
     @RequestMapping("/machine")
-    public Result<?> receiveHeartBeat(String app, Long version, String v, String hostname, String ip, Integer port) {
+    public Result<?> receiveHeartBeat(String app, @RequestParam(value = "app_type", required = false, defaultValue = "0") Integer appType, Long version, String v, String hostname, String ip, Integer port) {
         if (app == null) {
             app = MachineDiscovery.UNKNOWN_APP_NAME;
         }
@@ -57,14 +56,16 @@ public class MachineRegistryController {
             return Result.ofFail(-1, "your port not set yet");
         }
         String sentinelVersion = StringUtil.isEmpty(v) ? "unknown" : v;
-        long timestamp = version == null ? System.currentTimeMillis() : version;
+        version = version == null ? System.currentTimeMillis() : version;
         try {
             MachineInfo machineInfo = new MachineInfo();
             machineInfo.setApp(app);
+            machineInfo.setAppType(appType);
             machineInfo.setHostname(hostname);
             machineInfo.setIp(ip);
             machineInfo.setPort(port);
-            machineInfo.setTimestamp(new Date(timestamp));
+            machineInfo.setHeartbeatVersion(version);
+            machineInfo.setLastHeartbeat(System.currentTimeMillis());
             machineInfo.setVersion(sentinelVersion);
             appManagement.addMachine(machineInfo);
             return Result.ofSuccessMsg("success");

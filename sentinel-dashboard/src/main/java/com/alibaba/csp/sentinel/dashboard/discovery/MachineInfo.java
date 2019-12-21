@@ -15,18 +15,20 @@
  */
 package com.alibaba.csp.sentinel.dashboard.discovery;
 
-import java.util.Date;
 import java.util.Objects;
 
+import com.alibaba.csp.sentinel.dashboard.config.DashboardConfig;
 import com.alibaba.csp.sentinel.util.StringUtil;
 
 public class MachineInfo implements Comparable<MachineInfo> {
 
     private String app = "";
+    private Integer appType = 0;
     private String hostname = "";
     private String ip = "";
     private Integer port = -1;
-    private Date timestamp;
+    private long lastHeartbeat;
+    private long heartbeatVersion;
 
     /**
      * Indicates the version of Sentinel client (since 0.2.0).
@@ -61,6 +63,14 @@ public class MachineInfo implements Comparable<MachineInfo> {
         this.app = app;
     }
 
+    public Integer getAppType() {
+        return appType;
+    }
+
+    public void setAppType(Integer appType) {
+        this.appType = appType;
+    }
+
     public String getHostname() {
         return hostname;
     }
@@ -77,12 +87,12 @@ public class MachineInfo implements Comparable<MachineInfo> {
         this.ip = ip;
     }
 
-    public Date getTimestamp() {
-        return timestamp;
+    public long getHeartbeatVersion() {
+        return heartbeatVersion;
     }
-
-    public void setTimestamp(Date timestamp) {
-        this.timestamp = timestamp;
+    
+    public void setHeartbeatVersion(long heartbeatVersion) {
+        this.heartbeatVersion = heartbeatVersion;
     }
 
     public String getVersion() {
@@ -92,6 +102,32 @@ public class MachineInfo implements Comparable<MachineInfo> {
     public MachineInfo setVersion(String version) {
         this.version = version;
         return this;
+    }
+    
+    public boolean isHealthy() {
+        long delta = System.currentTimeMillis() - lastHeartbeat;
+        return delta < DashboardConfig.getUnhealthyMachineMillis();
+    }
+    
+    /**
+     * whether dead should be removed
+     * 
+     * @return
+     */
+    public boolean isDead() {
+        if (DashboardConfig.getAutoRemoveMachineMillis() > 0) {
+            long delta = System.currentTimeMillis() - lastHeartbeat;
+            return delta > DashboardConfig.getAutoRemoveMachineMillis();
+        }
+        return false;
+    }
+    
+    public long getLastHeartbeat() {
+        return lastHeartbeat;
+    }
+    
+    public void setLastHeartbeat(long lastHeartbeat) {
+        this.lastHeartbeat = lastHeartbeat;
     }
 
     @Override
@@ -110,14 +146,17 @@ public class MachineInfo implements Comparable<MachineInfo> {
 
     @Override
     public String toString() {
-        return "MachineInfo{" +
-            "app='" + app + '\'' +
-            ", hostname='" + hostname + '\'' +
-            ", ip='" + ip + '\'' +
-            ", port=" + port +
-            ", timestamp=" + timestamp +
-            ", version='" + version + '\'' +
-            '}';
+        return new StringBuilder("MachineInfo {")
+            .append("app='").append(app).append('\'')
+            .append(",appType='").append(appType).append('\'')
+            .append(", hostname='").append(hostname).append('\'')
+            .append(", ip='").append(ip).append('\'')
+            .append(", port=").append(port)
+            .append(", heartbeatVersion=").append(heartbeatVersion)
+            .append(", lastHeartbeat=").append(lastHeartbeat)
+            .append(", version='").append(version).append('\'')
+            .append(", healthy=").append(isHealthy())
+            .append('}').toString();
     }
 
     @Override
